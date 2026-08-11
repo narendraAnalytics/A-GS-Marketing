@@ -16,15 +16,22 @@ between enterprise apps and LLM providers. Generated marketing content
 should stay grounded in that specific product surface, not generic "AI
 security" language.
 
-## Status: Phase 1 + Phase 2 complete
+## Status: Phase 1 + Phase 2 complete, deployed
 
 All Phase 1 (backend) and Phase 2 (frontend) tasks done — see `../phase1.txt`
 and `../phase2.txt` TASK BREAKDOWN sections for full checklists with
-live-verification notes. No real LinkedIn publishing yet (Phase 3+).
-Deployment to Render is in progress — see README.md "Deploying to Render".
+live-verification notes. No real LinkedIn publishing yet — Phase 3 OAuth
+credentials are obtained and sitting in `.env` (see "Next up" below), but no
+OAuth code has been written. Full setup + flow reference in
+`../stepslinkedin.txt`.
+
+**Live**: backend deployed on Render at
+https://a-gs-marketing.onrender.com (`/health`, `/docs`), frontend on
+Vercel at https://a-gs-marketing.vercel.app. See README.md "Deploying to
+Render" for the deploy recipe if redeploying elsewhere.
 
 Working endpoints: `POST /api/marketing/generate`, `/regenerate`, `/approve`,
-`GET /api/marketing/draft/{id}`. `/publish` does not exist yet.
+`GET /api/marketing/draft/{id}`, `GET /health`. `/publish` does not exist yet.
 
 ## Architecture
 
@@ -85,6 +92,14 @@ uv run pytest -v                     # run tests (offline, no GEMINI_API_KEY nee
 - **In-memory `store.py` doesn't survive Render restarts/redeploys** and
   won't work correctly if scaled to multiple instances (each has its own
   dict). Fine for one always-on instance; needs a real DB before scaling.
+- **Render env vars are separate fields, not a pasted `.env` blob.** Pasting
+  the whole local `.env` file's contents into a single Render env var field
+  (e.g. into `GEMINI_API_KEY`) embeds a literal newline in that value. Since
+  `GeminiProvider` sends the key as an HTTP header, this produced
+  `httpx.LocalProtocolError: Illegal header value` on every `/generate`
+  call in production (worked fine locally, since `.env` parsing there
+  splits on newlines correctly). Each key must be its own Render env var
+  entry with only its own value.
 
 ## Conventions
 
@@ -97,6 +112,25 @@ uv run pytest -v                     # run tests (offline, no GEMINI_API_KEY nee
 
 ## Next up
 
-Phase 2 (not started): Next.js frontend on top of these endpoints. Phase 3+:
-real LinkedIn publishing (OAuth), Postgres-backed checkpointer if
-persistence across restarts becomes necessary.
+Phase 3 (code not started, credentials obtained): real LinkedIn publishing
+via OAuth. All setup steps and the full OAuth flow reference are in
+`../stepslinkedin.txt` — read that before starting Phase 3 implementation.
+
+Done so far (see `../stepslinkedin.txt` for how, if repeating for another
+env): LinkedIn Company Page created (`linkedin.com/company/a-gs-marketing/`,
+note LinkedIn rejects `&` in page/app names — that's why it's "AGS" not
+"A&GS" there), Developer app created and linked to that Page, both
+"Sign In with LinkedIn using OpenID Connect" and "Share on LinkedIn"
+products added (self-serve, instant), redirect URLs registered for both
+localhost and Render, and `LINKEDIN_CLIENT_ID` / `LINKEDIN_CLIENT_SECRET` /
+`LINKEDIN_REDIRECT_URI` are in `backend/.env` (currently pointed at the
+`localhost:8000` callback — swap to the Render URL, and add the same 3 vars
+to Render's Environment tab, when testing against the deployed backend).
+These are NOT yet in `Settings` (`app/config.py`) — nothing reads them yet,
+since no OAuth code exists. Add the fields there when Phase 3 starts.
+
+Key things to know going in: LinkedIn issues no refresh tokens for standard
+apps (60-day access tokens, then re-consent), and the token needs a
+persistence strategy — do NOT reuse `store.py`'s in-memory-dict pattern for
+it, that's fine for disposable drafts but not for a credential that's
+expensive to re-obtain.
