@@ -8,6 +8,15 @@ const ICON_PATHS = {
 
 export type ReactionIconName = keyof typeof ICON_PATHS;
 
+// Matches LinkedIn's per-action hover tint (Like/Send lean blue, Repost
+// leans green, Comment stays neutral gray-on-hover).
+const HOVER_COLOR: Record<ReactionIconName, string> = {
+  like: "hover:text-blue-600 dark:hover:text-blue-400",
+  comment: "hover:text-zinc-900 dark:hover:text-zinc-100",
+  repost: "hover:text-emerald-600 dark:hover:text-emerald-400",
+  send: "hover:text-blue-600 dark:hover:text-blue-400",
+};
+
 export function ReactionIcon({
   icon,
   label,
@@ -21,11 +30,11 @@ export function ReactionIcon({
     <button
       type="button"
       title={`${label} (preview only)`}
-      className={
+      className={`${
         compact
           ? "flex items-center justify-center rounded-md p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800"
           : "flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800"
-      }
+      } transition-colors ${HOVER_COLOR[icon]}`}
     >
       <svg
         viewBox="0 0 24 24"

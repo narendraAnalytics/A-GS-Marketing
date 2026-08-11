@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { LinkedInPostBody } from "./LinkedInPostBody";
 import { ReactionIcon } from "./ReactionIcon";
 
 interface LinkedInPreviewModalProps {
@@ -23,7 +24,6 @@ const SEE_MORE_CHAR_ESTIMATE: Record<ViewMode, number> = {
 
 export function LinkedInPreviewModal({ postText, cta, hashtags, imageUrl, onClose }: LinkedInPreviewModalProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("desktop");
-  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -33,9 +33,7 @@ export function LinkedInPreviewModal({ postText, cta, hashtags, imageUrl, onClos
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  const fullBody = `${postText}\n\n${cta}\n\n${hashtags.join(" ")}`;
   const cutoff = SEE_MORE_CHAR_ESTIMATE[viewMode];
-  const isTruncatable = fullBody.length > cutoff;
 
   return (
     <div
@@ -52,20 +50,14 @@ export function LinkedInPreviewModal({ postText, cta, hashtags, imageUrl, onClos
             <div className="flex rounded-md border border-zinc-300 p-0.5 text-xs dark:border-zinc-700">
               <button
                 type="button"
-                onClick={() => {
-                  setViewMode("desktop");
-                  setExpanded(false);
-                }}
+                onClick={() => setViewMode("desktop")}
                 className={`rounded px-2 py-1 ${viewMode === "desktop" ? "bg-blue-600 text-white" : "text-zinc-600 dark:text-zinc-300"}`}
               >
                 Desktop
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setViewMode("mobile");
-                  setExpanded(false);
-                }}
+                onClick={() => setViewMode("mobile")}
                 className={`rounded px-2 py-1 ${viewMode === "mobile" ? "bg-blue-600 text-white" : "text-zinc-600 dark:text-zinc-300"}`}
               >
                 Mobile
@@ -105,22 +97,15 @@ export function LinkedInPreviewModal({ postText, cta, hashtags, imageUrl, onClos
             </div>
 
             <div className="px-4 pb-3">
-              <p
-                className={`whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-100 ${
-                  !expanded && isTruncatable ? "line-clamp-3" : ""
-                }`}
-              >
-                {fullBody}
-              </p>
-              {isTruncatable && !expanded && (
-                <button
-                  type="button"
-                  onClick={() => setExpanded(true)}
-                  className="mt-0.5 text-sm font-medium text-zinc-500 hover:underline dark:text-zinc-400"
-                >
-                  ...see more
-                </button>
-              )}
+              {/* key={viewMode} remounts on desktop/mobile switch so the
+                  "...see more" expand state resets, matching the old behavior. */}
+              <LinkedInPostBody
+                key={viewMode}
+                postText={postText}
+                cta={cta}
+                hashtags={hashtags}
+                charLimit={cutoff}
+              />
             </div>
 
             {imageUrl && (
@@ -131,8 +116,16 @@ export function LinkedInPreviewModal({ postText, cta, hashtags, imageUrl, onClos
             )}
 
             <div className="flex items-center gap-1 px-4 py-2 text-xs text-zinc-500 dark:text-zinc-400">
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[10px] text-white">
-                👍
+              <span className="flex -space-x-1">
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[10px] ring-2 ring-white dark:ring-zinc-900">
+                  👍
+                </span>
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] ring-2 ring-white dark:ring-zinc-900">
+                  ❤️
+                </span>
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] ring-2 ring-white dark:ring-zinc-900">
+                  👏
+                </span>
               </span>
               <span>127</span>
               <span className="ml-auto">14 comments · 3 reposts</span>

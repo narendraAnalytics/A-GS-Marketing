@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { removeDraftImage, updateDraft, uploadDraftImage } from "@/lib/api";
 import type { PostDraft } from "@/lib/types";
 import { ImagePicker, useImagePreview } from "./ImagePicker";
+import { LinkedInPostBody } from "./LinkedInPostBody";
 import { LinkedInPreviewModal } from "./LinkedInPreviewModal";
 import { ReactionIcon } from "./ReactionIcon";
 import { StatusBadge } from "./StatusBadge";
@@ -150,6 +151,15 @@ export function PostDraftCard({
         </div>
       </div>
 
+      {!isEditing && (
+        <div className="border-b border-zinc-100 bg-zinc-50 px-5 py-2 dark:border-zinc-800 dark:bg-zinc-950/50">
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            <span className="font-medium text-zinc-600 dark:text-zinc-300">Strategy hook:</span>{" "}
+            {draft.strategy.hook}
+          </p>
+        </div>
+      )}
+
       <div className="space-y-4 px-5 py-4">
         {isEditing && (
           <p className="text-xs text-zinc-400">
@@ -160,39 +170,35 @@ export function PostDraftCard({
           </p>
         )}
         {isEditing ? (
-          <textarea
-            value={postText}
-            onChange={(e) => setPostText(e.target.value)}
-            rows={8}
-            className="w-full resize-y rounded-md border border-zinc-300 p-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
-          />
-        ) : (
-          <p className="whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-100">{postText}</p>
-        )}
-
-        <div>
-          <span className="text-xs font-medium uppercase text-zinc-400">CTA</span>
-          {isEditing ? (
-            <input
-              value={cta}
-              onChange={(e) => setCta(e.target.value)}
-              className="mt-1 w-full rounded-md border border-zinc-300 p-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+          <>
+            <textarea
+              value={postText}
+              onChange={(e) => setPostText(e.target.value)}
+              rows={8}
+              className="w-full resize-y rounded-md border border-zinc-300 p-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
             />
-          ) : (
-            <p className="text-sm text-zinc-800 dark:text-zinc-100">{cta}</p>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {draft.hashtags.map((tag) => (
-            <span
-              key={tag}
-              className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
+            <div>
+              <span className="text-xs font-medium uppercase text-zinc-400">CTA</span>
+              <input
+                value={cta}
+                onChange={(e) => setCta(e.target.value)}
+                className="mt-1 w-full rounded-md border border-zinc-300 p-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {draft.hashtags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </>
+        ) : (
+          <LinkedInPostBody postText={postText} cta={cta} hashtags={draft.hashtags} charLimit={210} />
+        )}
 
         <ImagePicker
           imageUrl={imageUrl}
@@ -215,9 +221,24 @@ export function PostDraftCard({
         )}
       </div>
 
-      {/* Decorative — mirrors LinkedIn's reaction bar so the preview reads
-          like the real thing. Not wired to anything; there's no live post
-          to react to until Phase 3's real publishing lands. */}
+      {/* Decorative — mirrors LinkedIn's reaction summary + action bar so
+          the preview reads like the real thing. Not wired to anything;
+          there's no live post to react to until it's actually published. */}
+      <div className="flex items-center gap-1 border-t border-zinc-200 px-5 py-2 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+        <span className="flex -space-x-1">
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[10px] ring-2 ring-white dark:ring-zinc-900">
+            👍
+          </span>
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] ring-2 ring-white dark:ring-zinc-900">
+            ❤️
+          </span>
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] ring-2 ring-white dark:ring-zinc-900">
+            👏
+          </span>
+        </span>
+        <span>127</span>
+        <span className="ml-auto">14 comments · 3 reposts</span>
+      </div>
       <div className="flex items-center justify-around border-t border-zinc-200 px-2 py-1 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
         <ReactionIcon icon="like" label="Like" />
         <ReactionIcon icon="comment" label="Comment" />

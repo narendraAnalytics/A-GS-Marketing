@@ -9,7 +9,7 @@ app = FastAPI(title="A&GS AI Marketing POC")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_allowed_origins_list,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Content-Type"],
 )
 app.include_router(marketing_router)
