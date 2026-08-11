@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { updateDraft } from "@/lib/api";
 import type { PostDraft } from "@/lib/types";
 import { ImagePicker, useImagePreview } from "./ImagePicker";
 import { LinkedInPreviewModal } from "./LinkedInPreviewModal";
@@ -11,16 +12,25 @@ interface PostDraftCardProps {
   draft: PostDraft;
   isBusy: boolean;
   busyLabel: "Regenerating" | "Approving" | null;
+  linkedinConnected: boolean;
   onRegenerate: () => void;
   onApprove: () => void;
 }
 
-export function PostDraftCard({ draft, isBusy, busyLabel, onRegenerate, onApprove }: PostDraftCardProps) {
+export function PostDraftCard({
+  draft,
+  isBusy,
+  busyLabel,
+  linkedinConnected,
+  onRegenerate,
+  onApprove,
+}: PostDraftCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [postText, setPostText] = useState(draft.post_text);
   const [cta, setCta] = useState(draft.cta);
   const [copied, setCopied] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const { imageFile, imageUrl, setImageFile } = useImagePreview();
 
   // A fresh generate/regenerate replaces the draft entirely — drop any
@@ -31,12 +41,39 @@ export function PostDraftCard({ draft, isBusy, busyLabel, onRegenerate, onApprov
     setIsEditing(false);
     setCopied(false);
     setImageFile(null);
+    setSaveState("idle");
     // setImageFile is stable (useState setter), safe to omit from deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.draft_id, draft.post_text, draft.cta]);
 
-  const isApproved = draft.status === "ready_to_publish";
+  // Auto-save edits to the backend (debounced) so /approve and /publish send
+  // what the user actually sees, not the original AI-generated text.
+  useEffect(() => {
+    if (!isEditing) return;
+    if (postText === draft.post_text && cta === draft.cta) return;
+
+    setSaveState("saving");
+    const timer = setTimeout(async () => {
+      try {
+        await updateDraft(draft.draft_id, { post_text: postText, cta });
+        setSaveState("saved");
+      } catch {
+        setSaveState("error");
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [postText, cta, isEditing, draft.draft_id, draft.post_text, draft.cta]);
+
+  const isPublished = draft.status === "published";
+  // Ready-to-publish-but-not-connected is a terminal state without LinkedIn
+  // (the old two-step approve flow); once connected, it's still clickable
+  // so the user can push the already-approved draft on to /publish.
+  const isDoneWithoutLinkedIn = draft.status === "ready_to_publish" && !linkedinConnected;
   const fullText = `${postText}\n\n${cta}\n\n${draft.hashtags.join(" ")}`;
+  const linkedinPostUrl = draft.post_urn
+    ? `https://www.linkedin.com/feed/update/${encodeURIComponent(draft.post_urn)}/`
+    : null;
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(fullText);
@@ -53,6 +90,22 @@ export function PostDraftCard({ draft, isBusy, busyLabel, onRegenerate, onApprov
         <StatusBadge status={draft.status} />
       </div>
 
+      {isPublished && (
+        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
+          <span>🎉 Published to LinkedIn!</span>
+          {linkedinPostUrl && (
+            <a
+              href={linkedinPostUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 rounded-md border border-emerald-300 px-3 py-1 text-xs font-medium hover:bg-emerald-100 dark:border-emerald-800 dark:hover:bg-emerald-900"
+            >
+              View on LinkedIn
+            </a>
+          )}
+        </div>
+      )}
+
       {/* LinkedIn-style post header, so the preview reads like the real feed item it becomes */}
       <div className="flex items-center gap-3 border-b border-zinc-200 px-5 pb-3 pt-2 dark:border-zinc-800">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
@@ -67,6 +120,14 @@ export function PostDraftCard({ draft, isBusy, busyLabel, onRegenerate, onApprov
       </div>
 
       <div className="space-y-4 px-5 py-4">
+        {isEditing && (
+          <p className="text-xs text-zinc-400">
+            {saveState === "saving" && "Saving..."}
+            {saveState === "saved" && "Saved"}
+            {saveState === "error" && <span className="text-red-500">Failed to save — check your connection</span>}
+            {saveState === "idle" && " "}
+          </p>
+        )}
         {isEditing ? (
           <textarea
             value={postText}
@@ -109,13 +170,10 @@ export function PostDraftCard({ draft, isBusy, busyLabel, onRegenerate, onApprov
           disabled={isBusy}
         />
 
-        {(isEditing || imageFile) && (
+        {imageFile && (
           <p className="text-xs text-amber-600 dark:text-amber-400">
-            {isEditing && imageFile
-              ? "Edits and the attached image are local only — neither is saved to the backend. Approving still marks the original AI-generated draft as ready; use Copy for the text and download the image separately when you post to LinkedIn."
-              : isEditing
-                ? "Edits are local only — not saved to the backend. Approving still marks the original AI-generated draft as ready; use Copy to grab your edited text."
-                : "The attached image is local only — not saved to the backend. It won't be included in Copy; attach it separately when you post to LinkedIn."}
+            The attached image is local only — not saved to the backend. It won&apos;t be included in Copy or in the
+            LinkedIn post; attach it separately when you post to LinkedIn.
           </p>
         )}
       </div>
@@ -134,7 +192,7 @@ export function PostDraftCard({ draft, isBusy, busyLabel, onRegenerate, onApprov
         <button
           type="button"
           onClick={() => setIsEditing((v) => !v)}
-          disabled={isBusy}
+          disabled={isBusy || isPublished}
           className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
           {isEditing ? "Done editing" : "Edit"}
@@ -160,12 +218,28 @@ export function PostDraftCard({ draft, isBusy, busyLabel, onRegenerate, onApprov
         <button
           type="button"
           onClick={onApprove}
-          disabled={isBusy || isApproved}
+          disabled={isBusy || isPublished || isDoneWithoutLinkedIn}
           className="ml-auto rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
-          {isApproved ? "Approved" : busyLabel === "Approving" ? "Approving..." : "Approve & Publish"}
+          {isPublished
+            ? "Published"
+            : isDoneWithoutLinkedIn
+              ? "Approved"
+              : busyLabel === "Approving"
+                ? linkedinConnected
+                  ? "Publishing..."
+                  : "Approving..."
+                : linkedinConnected
+                  ? "Approve & Publish"
+                  : "Approve"}
         </button>
       </div>
+
+      {!linkedinConnected && !isPublished && (
+        <p className="px-5 pb-3 text-xs text-zinc-500 dark:text-zinc-400">
+          Connect LinkedIn (top of page) to publish this post directly instead of just approving it.
+        </p>
+      )}
 
       {isPreviewOpen && (
         <LinkedInPreviewModal

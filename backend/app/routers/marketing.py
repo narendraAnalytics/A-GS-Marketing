@@ -15,6 +15,7 @@ from app.models import (
     PostDraft,
     PublishRequest,
     RegenerateRequest,
+    UpdateDraftRequest,
 )
 from app.store import DraftStore, get_store
 from app.workflow.graph import build_graph
@@ -87,6 +88,25 @@ def get_draft(draft_id: str) -> PostDraft:
     return _get_draft_or_404(store, draft_id)
 
 
+@router.patch("/draft/{draft_id}", response_model=PostDraft)
+def update_draft(draft_id: str, request: UpdateDraftRequest) -> PostDraft:
+    """Auto-save target for the frontend's editable post_text/cta fields —
+    keeps the server copy in sync so /approve and /publish send the text the
+    user actually saw, not the original AI-generated draft."""
+    store = get_store()
+    draft = _get_draft_or_404(store, draft_id)
+    if draft.status == "published":
+        raise HTTPException(status_code=400, detail="cannot edit a draft that has already been published")
+
+    updates = request.model_dump(exclude_unset=True, exclude_none=True)
+    if not updates:
+        return draft
+
+    updated = draft.model_copy(update=updates)
+    store.save(updated)
+    return updated
+
+
 @router.post("/publish", response_model=PostDraft)
 def publish(request: PublishRequest) -> PostDraft:
     store = get_store()
@@ -108,7 +128,7 @@ def publish(request: PublishRequest) -> PostDraft:
 
     commentary = f"{draft.post_text}\n\n{draft.cta}\n\n{' '.join(draft.hashtags)}"
     try:
-        linkedin_client.publish_post(
+        post_urn = linkedin_client.publish_post(
             get_settings(), connection["access_token"], connection["author_urn"], commentary
         )
     except httpx.HTTPStatusError as exc:
@@ -116,6 +136,6 @@ def publish(request: PublishRequest) -> PostDraft:
             status_code=502, detail=f"LinkedIn publish failed: {exc.response.text}"
         ) from exc
 
-    published = draft.model_copy(update={"status": "published"})
+    published = draft.model_copy(update={"status": "published", "post_urn": post_urn or None})
     store.save(published)
     return published

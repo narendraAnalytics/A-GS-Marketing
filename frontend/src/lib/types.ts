@@ -8,7 +8,7 @@ export interface StrategyOutput {
   key_message: string;
 }
 
-export type DraftStatus = "draft" | "ready_to_publish";
+export type DraftStatus = "draft" | "ready_to_publish" | "published";
 
 export interface PostDraft {
   draft_id: string;
@@ -18,4 +18,10 @@ export interface PostDraft {
   hashtags: string[];
   strategy: StrategyOutput;
   status: DraftStatus;
+  post_urn: string | null;
+}
+
+export interface LinkedInStatus {
+  connected: boolean;
+  name: string | null;
 }

@@ -1,4 +1,4 @@
-import type { PostDraft } from "./types";
+import type { LinkedInStatus, PostDraft } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -61,4 +61,31 @@ export function approvePost(draftId: string): Promise<PostDraft> {
 
 export function getDraft(draftId: string): Promise<PostDraft> {
   return request<PostDraft>(`/api/marketing/draft/${draftId}`);
+}
+
+export function updateDraft(
+  draftId: string,
+  updates: { post_text?: string; cta?: string },
+): Promise<PostDraft> {
+  return request<PostDraft>(`/api/marketing/draft/${draftId}`, {
+    method: "PATCH",
+    body: JSON.stringify(updates),
+  });
+}
+
+export function publishPost(draftId: string): Promise<PostDraft> {
+  return request<PostDraft>("/api/marketing/publish", {
+    method: "POST",
+    body: JSON.stringify({ draft_id: draftId }),
+  });
+}
+
+export function getLinkedInStatus(): Promise<LinkedInStatus> {
+  return request<LinkedInStatus>("/api/marketing/linkedin/status");
+}
+
+// Full-page navigation target, not a fetch — the browser needs to actually
+// land on LinkedIn's consent screen.
+export function linkedInConnectUrl(): string {
+  return `${API_BASE_URL}/api/marketing/linkedin/connect`;
 }

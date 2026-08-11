@@ -160,4 +160,5 @@ def test_publish_success_flips_status_and_calls_linkedin(client, monkeypatch):
     response = client.post("/api/marketing/publish", json={"draft_id": "draft-3"})
     assert response.status_code == 200
     assert response.json()["status"] == "published"
+    assert response.json()["post_urn"] == "urn:li:share:1"
     assert calls == [("tok", "urn:li:person:xyz", "text\n\ncta\n\n#a")]

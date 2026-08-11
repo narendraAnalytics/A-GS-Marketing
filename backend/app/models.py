@@ -39,6 +39,9 @@ class PostDraft(BaseModel):
     hashtags: list[str]
     strategy: StrategyOutput
     status: Literal["draft", "ready_to_publish", "published"] = "draft"
+    # LinkedIn's post URN (e.g. "urn:li:share:...") once published — lets the
+    # frontend link straight to the live post. None until /publish succeeds.
+    post_urn: str | None = None
 
 
 class GenerateRequest(BaseModel):
@@ -55,6 +58,11 @@ class ApproveRequest(BaseModel):
 
 class PublishRequest(BaseModel):
     draft_id: str
+
+
+class UpdateDraftRequest(BaseModel):
+    post_text: str | None = None
+    cta: str | None = None
 
 
 class LinkedInStatus(BaseModel):
