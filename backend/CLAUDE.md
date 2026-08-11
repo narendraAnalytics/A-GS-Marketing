@@ -16,40 +16,63 @@ between enterprise apps and LLM providers. Generated marketing content
 should stay grounded in that specific product surface, not generic "AI
 security" language.
 
-## Status: Phase 1 + Phase 2 complete, deployed
+## Status: Phase 1 + Phase 2 complete, deployed. Phase 3 OAuth code in progress
 
 All Phase 1 (backend) and Phase 2 (frontend) tasks done — see `../phase1.txt`
 and `../phase2.txt` TASK BREAKDOWN sections for full checklists with
-live-verification notes. No real LinkedIn publishing yet — Phase 3 OAuth
-credentials are obtained and sitting in `.env` (see "Next up" below), but no
-OAuth code has been written. Full setup + flow reference in
+live-verification notes.
+
+Phase 3 (real LinkedIn publishing) backend code now exists: OAuth
+connect/callback/status endpoints plus `/publish`. Covered by 9 offline
+tests (monkeypatched `app.linkedin.client`, same pattern as
+`FakeLLMProvider`). NOT yet verified against a real LinkedIn account in a
+browser, and the frontend has no "Connect LinkedIn" button yet — both are
+the next concrete steps. Full setup + flow reference in
 `../stepslinkedin.txt`.
 
 **Live**: backend deployed on Render at
 https://a-gs-marketing.onrender.com (`/health`, `/docs`), frontend on
 Vercel at https://a-gs-marketing.vercel.app. See README.md "Deploying to
-Render" for the deploy recipe if redeploying elsewhere.
+Render" for the deploy recipe if redeploying elsewhere. The LinkedIn env
+vars are only in local `.env` so far — Render's Environment tab still needs
+`LINKEDIN_CLIENT_ID`/`LINKEDIN_CLIENT_SECRET`/`LINKEDIN_REDIRECT_URI` (the
+Render-URL version of the redirect) added before OAuth will work in prod.
 
-Working endpoints: `POST /api/marketing/generate`, `/regenerate`, `/approve`,
-`GET /api/marketing/draft/{id}`, `GET /health`. `/publish` does not exist yet.
+Working endpoints: `POST /api/marketing/generate`, `/regenerate`,
+`/approve`, `/publish`, `GET /api/marketing/draft/{id}`, `GET /health`,
+`GET /api/marketing/linkedin/connect` (redirect to LinkedIn),
+`GET /api/marketing/linkedin/callback` (OAuth redirect target),
+`GET /api/marketing/linkedin/status`.
 
 ## Architecture
 
 ```
-FastAPI routes (app/routers/marketing.py)
-  -> LangGraph StateGraph (app/workflow/graph.py): strategy -> content
-    -> StrategyAgent / ContentAgent (app/agents/)
-      -> LLMProvider protocol (app/llm/base.py)
-        -> GeminiProvider (app/llm/gemini_provider.py) -- only module that
-           imports google.genai directly
+FastAPI routes
+  app/routers/marketing.py: generate/regenerate/approve/publish/draft
+    -> LangGraph StateGraph (app/workflow/graph.py): strategy -> content
+      -> StrategyAgent / ContentAgent (app/agents/)
+        -> LLMProvider protocol (app/llm/base.py)
+          -> GeminiProvider (app/llm/gemini_provider.py) -- only module
+             that imports google.genai directly
+  app/routers/linkedin.py: connect/callback/status
+    -> app/linkedin/client.py -- OAuth + Posts API calls via httpx (only
+       module that talks to LinkedIn's API directly)
+    -> app/linkedin/store.py -- in-memory OAuth state (CSRF) + the single
+       LinkedIn connection (access token, author URN)
 ```
 
 Agents never call Gemini directly — always through `LLMProvider`, so
-swapping in another model provider later doesn't touch agent code.
+swapping in another model provider later doesn't touch agent code. Same
+principle applied to `app/linkedin/client.py` for LinkedIn calls, though
+there's no provider-abstraction layer there (only one LinkedIn integration
+will ever exist, unlike swappable LLM providers — would be needless
+abstraction).
 
 Drafts live in an in-memory singleton store (`app/store.py`) — no
 persistence across restarts, single-process only. Deliberate for a POC; see
 phase1.txt "WHY NOT FULL LANGGRAPH interrupt() / POSTGRES CHECKPOINTER YET".
+The LinkedIn connection (`app/linkedin/store.py`) uses the same in-memory
+pattern for now, but this one is a known-weaker tradeoff — see gotchas below.
 
 ## Commands
 
@@ -100,6 +123,25 @@ uv run pytest -v                     # run tests (offline, no GEMINI_API_KEY nee
   call in production (worked fine locally, since `.env` parsing there
   splits on newlines correctly). Each key must be its own Render env var
   entry with only its own value.
+- **The LinkedIn connection store is genuinely weaker than `store.py`'s
+  tradeoff, not just a copy of it.** A lost draft costs one Gemini call to
+  regenerate; a lost LinkedIn connection costs the user a full re-consent
+  through LinkedIn's OAuth screen. Render restarts, redeploys, or free-tier
+  spin-down all wipe it. Acceptable for this POC's single-user, single-
+  instance setup — but if this app ever needs to survive a Render restart
+  without forcing reconnection, this is the first thing to move to real
+  persistence (not the draft store).
+- **LinkedIn issues no refresh tokens for standard (non-Marketing-
+  Developer-Platform) apps.** Access tokens last 60 days, then the only way
+  to get a new one is the user going through `/connect` again — there's no
+  silent refresh call to make. `LinkedInStore.get_connection()` treats an
+  expired token as "not connected" rather than trying to use it.
+- **`LinkedIn-Version` header (`app/config.py`'s `linkedin_api_version`,
+  currently `"202606"`) needs bumping periodically.** LinkedIn deprecates
+  API versions roughly 12 months out. If `/publish` starts failing with a
+  version-related error, check
+  https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api
+  for the current value before assuming it's a code bug.
 
 ## Conventions
 
@@ -108,29 +150,32 @@ uv run pytest -v                     # run tests (offline, no GEMINI_API_KEY nee
 - New Pydantic models go in `app/models.py`, not scattered per-module.
 - Tests use `FakeLLMProvider` (`tests/conftest.py`) — no network calls, no
   `GEMINI_API_KEY` required. Route tests monkeypatch
-  `app.routers.marketing.get_graph` to inject it.
+  `app.routers.marketing.get_graph` to inject it. LinkedIn tests
+  (`tests/test_linkedin.py`) follow the same shape: monkeypatch
+  `app.linkedin.client`'s functions rather than hitting the real API, and
+  reset `get_linkedin_store()`'s module-level singleton between tests via
+  an autouse fixture (it isn't request-scoped like FastAPI dependencies —
+  without the reset, tests leak connection state into each other).
+- Only `app/linkedin/client.py` imports/calls LinkedIn's API directly, same
+  isolation principle as `GeminiProvider` for Gemini.
 
 ## Next up
 
-Phase 3 (code not started, credentials obtained): real LinkedIn publishing
-via OAuth. All setup steps and the full OAuth flow reference are in
-`../stepslinkedin.txt` — read that before starting Phase 3 implementation.
+1. **Verify the OAuth flow against a real LinkedIn account in a browser.**
+   Code is written and unit-tested (monkeypatched), but nobody has actually
+   clicked through `/api/marketing/linkedin/connect` → LinkedIn's consent
+   screen → `/callback` → checked `/status` shows `connected: true` with a
+   real name yet. Do this before trusting `/publish` works at all — it's
+   the one thing that can't be verified without a real LinkedIn login.
+2. **Build the frontend's "Connect LinkedIn" button** (full-page
+   navigation to `/api/marketing/linkedin/connect`, not `fetch` — see
+   `frontend/CLAUDE.md`) and wire `PostDraftCard`'s "Approve & Publish"
+   flow to actually call the new `/publish` endpoint instead of just
+   flipping to `ready_to_publish` and stopping there.
+3. Add the 3 `LINKEDIN_*` env vars to Render's Environment tab (with the
+   Render-URL redirect, not localhost) once ready to test the deployed
+   version.
 
-Done so far (see `../stepslinkedin.txt` for how, if repeating for another
-env): LinkedIn Company Page created (`linkedin.com/company/a-gs-marketing/`,
-note LinkedIn rejects `&` in page/app names — that's why it's "AGS" not
-"A&GS" there), Developer app created and linked to that Page, both
-"Sign In with LinkedIn using OpenID Connect" and "Share on LinkedIn"
-products added (self-serve, instant), redirect URLs registered for both
-localhost and Render, and `LINKEDIN_CLIENT_ID` / `LINKEDIN_CLIENT_SECRET` /
-`LINKEDIN_REDIRECT_URI` are in `backend/.env` (currently pointed at the
-`localhost:8000` callback — swap to the Render URL, and add the same 3 vars
-to Render's Environment tab, when testing against the deployed backend).
-These are NOT yet in `Settings` (`app/config.py`) — nothing reads them yet,
-since no OAuth code exists. Add the fields there when Phase 3 starts.
-
-Key things to know going in: LinkedIn issues no refresh tokens for standard
-apps (60-day access tokens, then re-consent), and the token needs a
-persistence strategy — do NOT reuse `store.py`'s in-memory-dict pattern for
-it, that's fine for disposable drafts but not for a credential that's
-expensive to re-obtain.
+Setup steps (LinkedIn Page/app/products) are already done — see
+`../stepslinkedin.txt` for the full record, including the `&`-in-names
+gotcha and why Community Management API was deliberately avoided.

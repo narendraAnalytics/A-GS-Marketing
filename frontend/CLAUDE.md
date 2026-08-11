@@ -103,8 +103,26 @@ grows past this single workspace.
 
 ## Next up
 
-Phase 3 (not started): real LinkedIn OAuth + publishing. The frontend's
-piece of this will be a "Connect LinkedIn" button that does a full-page
-redirect (not `fetch`) to LinkedIn's authorization URL — see
-`../stepslinkedin.txt` STEP 6 for the exact flow this needs to trigger and
-what the backend will expect back.
+Backend OAuth code now exists (`backend/app/routers/linkedin.py`,
+unit-tested but not yet browser-verified — see `backend/CLAUDE.md`). The
+frontend still needs, in order:
+
+1. A **"Connect LinkedIn" button** — a full-page navigation
+   (`window.location.href = ...`, NOT `fetch`) to
+   `${NEXT_PUBLIC_API_BASE_URL}/api/marketing/linkedin/connect`. This has
+   to be a real browser navigation because the user needs to land on
+   LinkedIn's actual consent screen; `fetch` can't do that.
+2. Read the `?linkedin=connected` / `?linkedin=error` query param that the
+   backend's `/callback` redirects back to `/` with (see
+   `backend/app/routers/linkedin.py`), and show a toast/banner accordingly.
+   Also call `GET /api/marketing/linkedin/status` on mount to reflect
+   whether a connection already exists (e.g. after a page refresh).
+3. Wire `PostDraftCard`'s "Approve & Publish" button to call the new
+   `POST /api/marketing/publish` endpoint (not just `/approve`) once
+   connected — right now it only flips status to `ready_to_publish` and
+   stops there, matching the old two-step design from before `/publish`
+   existed.
+
+Add `PublishRequest`/`LinkedInStatus`-equivalent types to `lib/types.ts`
+and corresponding wrappers to `lib/api.ts` before starting the UI work —
+same pattern as the existing 4 endpoints.

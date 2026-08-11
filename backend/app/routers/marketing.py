@@ -1,12 +1,21 @@
 import uuid
 from functools import lru_cache
 
+import httpx
 from fastapi import APIRouter, HTTPException
 from langgraph.graph.state import CompiledStateGraph
 
 from app.config import get_settings
+from app.linkedin import client as linkedin_client
+from app.linkedin.store import get_linkedin_store
 from app.llm.gemini_provider import GeminiProvider
-from app.models import ApproveRequest, GenerateRequest, PostDraft, RegenerateRequest
+from app.models import (
+    ApproveRequest,
+    GenerateRequest,
+    PostDraft,
+    PublishRequest,
+    RegenerateRequest,
+)
 from app.store import DraftStore, get_store
 from app.workflow.graph import build_graph
 
@@ -76,3 +85,37 @@ def approve(request: ApproveRequest) -> PostDraft:
 def get_draft(draft_id: str) -> PostDraft:
     store = get_store()
     return _get_draft_or_404(store, draft_id)
+
+
+@router.post("/publish", response_model=PostDraft)
+def publish(request: PublishRequest) -> PostDraft:
+    store = get_store()
+    draft = _get_draft_or_404(store, request.draft_id)
+
+    if draft.status != "ready_to_publish":
+        raise HTTPException(
+            status_code=400,
+            detail=f"draft {draft.draft_id!r} must be approved (ready_to_publish) before publishing, "
+            f"current status is {draft.status!r}",
+        )
+
+    connection = get_linkedin_store().get_connection()
+    if connection is None:
+        raise HTTPException(
+            status_code=400,
+            detail="LinkedIn is not connected. Visit /api/marketing/linkedin/connect first.",
+        )
+
+    commentary = f"{draft.post_text}\n\n{draft.cta}\n\n{' '.join(draft.hashtags)}"
+    try:
+        linkedin_client.publish_post(
+            get_settings(), connection["access_token"], connection["author_urn"], commentary
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"LinkedIn publish failed: {exc.response.text}"
+        ) from exc
+
+    published = draft.model_copy(update={"status": "published"})
+    store.save(published)
+    return published

@@ -38,7 +38,7 @@ class PostDraft(BaseModel):
     cta: str
     hashtags: list[str]
     strategy: StrategyOutput
-    status: Literal["draft", "ready_to_publish"] = "draft"
+    status: Literal["draft", "ready_to_publish", "published"] = "draft"
 
 
 class GenerateRequest(BaseModel):
@@ -51,3 +51,12 @@ class RegenerateRequest(BaseModel):
 
 class ApproveRequest(BaseModel):
     draft_id: str
+
+
+class PublishRequest(BaseModel):
+    draft_id: str
+
+
+class LinkedInStatus(BaseModel):
+    connected: bool
+    name: str | None = None
