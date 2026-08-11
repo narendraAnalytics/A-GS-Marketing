@@ -39,13 +39,13 @@ export function LinkedInPostBody({ postText, cta, hashtags, charLimit }: LinkedI
       >
         {withHighlightedHashtags(fullBody)}
       </p>
-      {isTruncatable && !expanded && (
+      {isTruncatable && (
         <button
           type="button"
-          onClick={() => setExpanded(true)}
+          onClick={() => setExpanded((v) => !v)}
           className="mt-0.5 text-sm font-medium text-zinc-500 hover:underline dark:text-zinc-400"
         >
-          ...see more
+          {expanded ? "...see less" : "...see more"}
         </button>
       )}
     </div>
