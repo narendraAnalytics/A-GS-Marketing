@@ -42,6 +42,9 @@ class PostDraft(BaseModel):
     # LinkedIn's post URN (e.g. "urn:li:share:...") once published — lets the
     # frontend link straight to the live post. None until /publish succeeds.
     post_urn: str | None = None
+    # Whether an image is attached (raw bytes live in ImageStore, not here —
+    # keeps this model JSON-only). Actually uploaded to LinkedIn at publish time.
+    has_image: bool = False
 
 
 class GenerateRequest(BaseModel):

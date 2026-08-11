@@ -84,6 +84,39 @@ export function getLinkedInStatus(): Promise<LinkedInStatus> {
   return request<LinkedInStatus>("/api/marketing/linkedin/status");
 }
 
+export async function uploadDraftImage(draftId: string, file: File): Promise<PostDraft> {
+  if (!API_BASE_URL) {
+    throw new ApiError(0, "NEXT_PUBLIC_API_BASE_URL is not set");
+  }
+  const formData = new FormData();
+  formData.append("file", file);
+
+  let response: Response;
+  try {
+    // No Content-Type header here on purpose — the browser sets the
+    // multipart boundary itself; setting it manually breaks the upload.
+    response = await fetch(`${API_BASE_URL}/api/marketing/draft/${draftId}/image`, {
+      method: "POST",
+      body: formData,
+    });
+  } catch {
+    throw new ApiError(0, "Could not reach the backend. Is it running?");
+  }
+
+  if (!response.ok) {
+    const detail = await response
+      .json()
+      .then((body: { detail?: string }) => body.detail)
+      .catch(() => undefined);
+    throw new ApiError(response.status, detail ?? `Image upload failed (${response.status})`);
+  }
+  return response.json() as Promise<PostDraft>;
+}
+
+export function removeDraftImage(draftId: string): Promise<PostDraft> {
+  return request<PostDraft>(`/api/marketing/draft/${draftId}/image`, { method: "DELETE" });
+}
+
 // Full-page navigation target, not a fetch — the browser needs to actually
 // land on LinkedIn's consent screen.
 export function linkedInConnectUrl(): string {

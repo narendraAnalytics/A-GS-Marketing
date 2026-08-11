@@ -8,6 +8,7 @@ AUTHORIZATION_URL = "https://www.linkedin.com/oauth/v2/authorization"
 TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
 USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
 POSTS_URL = "https://api.linkedin.com/rest/posts"
+IMAGES_URL = "https://api.linkedin.com/rest/images"
 
 # Sign In with LinkedIn using OpenID Connect (openid, profile, email) +
 # Share on LinkedIn (w_member_social) — the two self-serve products added
@@ -57,8 +58,57 @@ def get_userinfo(access_token: str) -> dict:
     return response.json()
 
 
-def publish_post(settings: Settings, access_token: str, author_urn: str, commentary: str) -> str:
-    """Publishes a text post as the given author. Returns the new post's URN."""
+def upload_image(settings: Settings, access_token: str, author_urn: str, image_bytes: bytes) -> str:
+    """Uploads an image via LinkedIn's Images API (initializeUpload -> PUT
+    bytes) and returns the resulting image URN (e.g. "urn:li:image:...") for
+    use in a subsequent /publish call's content.media.id."""
+    init_response = httpx.post(
+        f"{IMAGES_URL}?action=initializeUpload",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "LinkedIn-Version": settings.linkedin_api_version,
+            "X-Restli-Protocol-Version": "2.0.0",
+            "Content-Type": "application/json",
+        },
+        json={"initializeUploadRequest": {"owner": author_urn}},
+        timeout=15,
+    )
+    init_response.raise_for_status()
+    value = init_response.json()["value"]
+    upload_url = value["uploadUrl"]
+    image_urn = value["image"]
+
+    # Upload call requires the OAuth token in Authorization (unlike video
+    # uploads, which don't) — per LinkedIn's Images/Assets API docs.
+    upload_response = httpx.put(
+        upload_url,
+        headers={"Authorization": f"Bearer {access_token}"},
+        content=image_bytes,
+        timeout=30,
+    )
+    upload_response.raise_for_status()
+    return image_urn
+
+
+def publish_post(
+    settings: Settings,
+    access_token: str,
+    author_urn: str,
+    commentary: str,
+    image_urn: str | None = None,
+) -> str:
+    """Publishes a post (optionally with an image) as the given author.
+    Returns the new post's URN."""
+    body = {
+        "author": author_urn,
+        "commentary": commentary,
+        "visibility": "PUBLIC",
+        "distribution": {"feedDistribution": "MAIN_FEED"},
+        "lifecycleState": "PUBLISHED",
+    }
+    if image_urn:
+        body["content"] = {"media": {"id": image_urn}}
+
     response = httpx.post(
         POSTS_URL,
         headers={
@@ -67,13 +117,7 @@ def publish_post(settings: Settings, access_token: str, author_urn: str, comment
             "X-Restli-Protocol-Version": "2.0.0",
             "Content-Type": "application/json",
         },
-        json={
-            "author": author_urn,
-            "commentary": commentary,
-            "visibility": "PUBLIC",
-            "distribution": {"feedDistribution": "MAIN_FEED"},
-            "lifecycleState": "PUBLISHED",
-        },
+        json=body,
         timeout=15,
     )
     response.raise_for_status()

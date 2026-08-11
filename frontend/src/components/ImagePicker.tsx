@@ -6,12 +6,13 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // LinkedIn recommends images under 5MB
 
 interface ImagePickerProps {
   imageUrl: string | null;
+  uploadState: "idle" | "uploading" | "success" | "error";
   onSelect: (file: File) => void;
   onRemove: () => void;
   disabled: boolean;
 }
 
-export function ImagePicker({ imageUrl, onSelect, onRemove, disabled }: ImagePickerProps) {
+export function ImagePicker({ imageUrl, uploadState, onSelect, onRemove, disabled }: ImagePickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,6 +51,21 @@ export function ImagePicker({ imageUrl, onSelect, onRemove, disabled }: ImagePic
         >
           Remove
         </button>
+        {uploadState === "uploading" && (
+          <span className="absolute left-2 top-2 rounded-md bg-black/60 px-2 py-1 text-xs font-medium text-white">
+            Uploading...
+          </span>
+        )}
+        {uploadState === "success" && (
+          <span className="absolute left-2 top-2 flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white">
+            ✓ Uploaded
+          </span>
+        )}
+        {uploadState === "error" && (
+          <span className="absolute left-2 top-2 rounded-md bg-red-600 px-2 py-1 text-xs font-medium text-white">
+            Upload failed
+          </span>
+        )}
       </div>
     );
   }

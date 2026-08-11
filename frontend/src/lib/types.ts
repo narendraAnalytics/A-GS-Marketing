@@ -19,6 +19,7 @@ export interface PostDraft {
   strategy: StrategyOutput;
   status: DraftStatus;
   post_urn: string | null;
+  has_image: boolean;
 }
 
 export interface LinkedInStatus {

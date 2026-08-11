@@ -154,11 +154,62 @@ def test_publish_success_flips_status_and_calls_linkedin(client, monkeypatch):
     monkeypatch.setattr(
         linkedin_client,
         "publish_post",
-        lambda settings, access_token, author_urn, commentary: calls.append((access_token, author_urn, commentary)) or "urn:li:share:1",
+        lambda settings, access_token, author_urn, commentary, image_urn=None: calls.append(
+            (access_token, author_urn, commentary, image_urn)
+        )
+        or "urn:li:share:1",
     )
 
     response = client.post("/api/marketing/publish", json={"draft_id": "draft-3"})
     assert response.status_code == 200
     assert response.json()["status"] == "published"
     assert response.json()["post_urn"] == "urn:li:share:1"
-    assert calls == [("tok", "urn:li:person:xyz", "text\n\ncta\n\n#a")]
+    assert calls == [("tok", "urn:li:person:xyz", "text\n\ncta\n\n#a", None)]
+
+
+def test_publish_uploads_attached_image_first(client, monkeypatch):
+    from app.models import PostDraft, StrategyOutput
+    from app.store import get_image_store, get_store
+
+    strategy = StrategyOutput(audience="a", angle="b", hook="c", key_message="d")
+    draft = PostDraft(
+        draft_id="draft-4",
+        objective="obj",
+        post_text="text",
+        cta="cta",
+        hashtags=["#a"],
+        strategy=strategy,
+        status="ready_to_publish",
+        has_image=True,
+    )
+    get_store().save(draft)
+    get_image_store().save("draft-4", b"fake-bytes", "image/png")
+
+    get_linkedin_store().save_connection(
+        {"access_token": "tok", "expires_at": 9999999999, "author_urn": "urn:li:person:xyz", "name": "Test"}
+    )
+
+    upload_calls = []
+    monkeypatch.setattr(
+        linkedin_client,
+        "upload_image",
+        lambda settings, access_token, author_urn, content: upload_calls.append(
+            (access_token, author_urn, content)
+        )
+        or "urn:li:image:abc",
+    )
+
+    publish_calls = []
+    monkeypatch.setattr(
+        linkedin_client,
+        "publish_post",
+        lambda settings, access_token, author_urn, commentary, image_urn=None: publish_calls.append(
+            image_urn
+        )
+        or "urn:li:share:2",
+    )
+
+    response = client.post("/api/marketing/publish", json={"draft_id": "draft-4"})
+    assert response.status_code == 200
+    assert upload_calls == [("tok", "urn:li:person:xyz", b"fake-bytes")]
+    assert publish_calls == ["urn:li:image:abc"]

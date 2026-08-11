@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { updateDraft } from "@/lib/api";
+import { removeDraftImage, updateDraft, uploadDraftImage } from "@/lib/api";
 import type { PostDraft } from "@/lib/types";
 import { ImagePicker, useImagePreview } from "./ImagePicker";
 import { LinkedInPreviewModal } from "./LinkedInPreviewModal";
@@ -31,6 +31,7 @@ export function PostDraftCard({
   const [copied, setCopied] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [imageUploadState, setImageUploadState] = useState<"idle" | "uploading" | "success" | "error">("idle");
   const { imageFile, imageUrl, setImageFile } = useImagePreview();
 
   // A fresh generate/regenerate replaces the draft entirely — drop any
@@ -42,6 +43,7 @@ export function PostDraftCard({
     setCopied(false);
     setImageFile(null);
     setSaveState("idle");
+    setImageUploadState("idle");
     // setImageFile is stable (useState setter), safe to omit from deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.draft_id, draft.post_text, draft.cta]);
@@ -64,6 +66,35 @@ export function PostDraftCard({
 
     return () => clearTimeout(timer);
   }, [postText, cta, isEditing, draft.draft_id, draft.post_text, draft.cta]);
+
+  // Upload the attached image to the backend as soon as it's picked — it's
+  // only sent on to LinkedIn at /publish time, but staging it here means
+  // publish doesn't have to wait on an upload.
+  useEffect(() => {
+    if (!imageFile) return;
+    let cancelled = false;
+    setImageUploadState("uploading");
+    uploadDraftImage(draft.draft_id, imageFile)
+      .then(() => {
+        if (!cancelled) setImageUploadState("success");
+      })
+      .catch(() => {
+        if (!cancelled) setImageUploadState("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [imageFile, draft.draft_id]);
+
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setImageUploadState("idle");
+    removeDraftImage(draft.draft_id).catch(() => {
+      // Best-effort — if this fails the stale image just gets overwritten
+      // by the next upload, or ignored since has_image is already false
+      // from the draft's perspective once a new one is picked.
+    });
+  };
 
   const isPublished = draft.status === "published";
   // Ready-to-publish-but-not-connected is a terminal state without LinkedIn
@@ -165,15 +196,21 @@ export function PostDraftCard({
 
         <ImagePicker
           imageUrl={imageUrl}
+          uploadState={imageUploadState}
           onSelect={setImageFile}
-          onRemove={() => setImageFile(null)}
+          onRemove={handleRemoveImage}
           disabled={isBusy}
         />
 
-        {imageFile && (
-          <p className="text-xs text-amber-600 dark:text-amber-400">
-            The attached image is local only — not saved to the backend. It won&apos;t be included in Copy or in the
-            LinkedIn post; attach it separately when you post to LinkedIn.
+        {imageFile && imageUploadState === "error" && (
+          <p className="text-xs text-red-600 dark:text-red-400">
+            The image failed to upload — try re-selecting it before publishing.
+          </p>
+        )}
+        {imageFile && imageUploadState !== "error" && (
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            The image will be included when you publish to LinkedIn. It&apos;s not included in Copy — download it
+            separately if you need it elsewhere.
           </p>
         )}
       </div>
@@ -218,20 +255,22 @@ export function PostDraftCard({
         <button
           type="button"
           onClick={onApprove}
-          disabled={isBusy || isPublished || isDoneWithoutLinkedIn}
+          disabled={isBusy || isPublished || isDoneWithoutLinkedIn || imageUploadState === "uploading"}
           className="ml-auto rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
           {isPublished
             ? "Published"
             : isDoneWithoutLinkedIn
               ? "Approved"
-              : busyLabel === "Approving"
-                ? linkedinConnected
-                  ? "Publishing..."
-                  : "Approving..."
-                : linkedinConnected
-                  ? "Approve & Publish"
-                  : "Approve"}
+              : imageUploadState === "uploading"
+                ? "Uploading image..."
+                : busyLabel === "Approving"
+                  ? linkedinConnected
+                    ? "Publishing..."
+                    : "Approving..."
+                  : linkedinConnected
+                    ? "Approve & Publish"
+                    : "Approve"}
         </button>
       </div>
 
