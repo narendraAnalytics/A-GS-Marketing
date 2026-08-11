@@ -24,6 +24,9 @@ frontend/next-env.d.ts
 !.env.example
 !.env.*.example
 
+# Claude Code local session state
+.claude/
+
 # OS / editor
 .DS_Store
 *.pem

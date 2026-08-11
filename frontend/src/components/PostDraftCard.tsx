@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import type { PostDraft } from "@/lib/types";
+import { ImagePicker, useImagePreview } from "./ImagePicker";
+import { LinkedInPreviewModal } from "./LinkedInPreviewModal";
+import { ReactionIcon } from "./ReactionIcon";
 import { StatusBadge } from "./StatusBadge";
 
 interface PostDraftCardProps {
@@ -17,6 +20,8 @@ export function PostDraftCard({ draft, isBusy, busyLabel, onRegenerate, onApprov
   const [postText, setPostText] = useState(draft.post_text);
   const [cta, setCta] = useState(draft.cta);
   const [copied, setCopied] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const { imageFile, imageUrl, setImageFile } = useImagePreview();
 
   // A fresh generate/regenerate replaces the draft entirely — drop any
   // local edits from the previous draft rather than merging them.
@@ -25,6 +30,9 @@ export function PostDraftCard({ draft, isBusy, busyLabel, onRegenerate, onApprov
     setCta(draft.cta);
     setIsEditing(false);
     setCopied(false);
+    setImageFile(null);
+    // setImageFile is stable (useState setter), safe to omit from deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.draft_id, draft.post_text, draft.cta]);
 
   const isApproved = draft.status === "ready_to_publish";
@@ -94,10 +102,20 @@ export function PostDraftCard({ draft, isBusy, busyLabel, onRegenerate, onApprov
           ))}
         </div>
 
-        {isEditing && (
+        <ImagePicker
+          imageUrl={imageUrl}
+          onSelect={setImageFile}
+          onRemove={() => setImageFile(null)}
+          disabled={isBusy}
+        />
+
+        {(isEditing || imageFile) && (
           <p className="text-xs text-amber-600 dark:text-amber-400">
-            Edits are local only — not saved to the backend. Approving still marks the original
-            AI-generated draft as ready; use Copy to grab your edited text.
+            {isEditing && imageFile
+              ? "Edits and the attached image are local only — neither is saved to the backend. Approving still marks the original AI-generated draft as ready; use Copy for the text and download the image separately when you post to LinkedIn."
+              : isEditing
+                ? "Edits are local only — not saved to the backend. Approving still marks the original AI-generated draft as ready; use Copy to grab your edited text."
+                : "The attached image is local only — not saved to the backend. It won't be included in Copy; attach it separately when you post to LinkedIn."}
           </p>
         )}
       </div>
@@ -134,6 +152,13 @@ export function PostDraftCard({ draft, isBusy, busyLabel, onRegenerate, onApprov
         </button>
         <button
           type="button"
+          onClick={() => setIsPreviewOpen(true)}
+          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+        >
+          Preview
+        </button>
+        <button
+          type="button"
           onClick={onApprove}
           disabled={isBusy || isApproved}
           className="ml-auto rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
@@ -141,37 +166,16 @@ export function PostDraftCard({ draft, isBusy, busyLabel, onRegenerate, onApprov
           {isApproved ? "Approved" : busyLabel === "Approving" ? "Approving..." : "Approve & Publish"}
         </button>
       </div>
+
+      {isPreviewOpen && (
+        <LinkedInPreviewModal
+          postText={postText}
+          cta={cta}
+          hashtags={draft.hashtags}
+          imageUrl={imageUrl}
+          onClose={() => setIsPreviewOpen(false)}
+        />
+      )}
     </div>
-  );
-}
-
-const ICON_PATHS: Record<string, string> = {
-  like: "M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3",
-  comment:
-    "M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z",
-  repost: "M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3",
-  send: "M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z",
-};
-
-function ReactionIcon({ icon, label }: { icon: keyof typeof ICON_PATHS; label: string }) {
-  return (
-    <button
-      type="button"
-      title={`${label} (preview only)`}
-      className="flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-4 w-4"
-      >
-        <path d={ICON_PATHS[icon]} />
-      </svg>
-      {label}
-    </button>
   );
 }
