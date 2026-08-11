@@ -16,11 +16,12 @@ between enterprise apps and LLM providers. Generated marketing content
 should stay grounded in that specific product surface, not generic "AI
 security" language.
 
-## Status: Phase 1 complete (backend-only)
+## Status: Phase 1 + Phase 2 complete
 
-All 11 Phase 1 tasks done — see `../phase1.txt` TASK BREAKDOWN section for
-the full checklist with live-verification notes. No frontend yet (Phase 2),
-no real LinkedIn publishing (Phase 3+).
+All Phase 1 (backend) and Phase 2 (frontend) tasks done — see `../phase1.txt`
+and `../phase2.txt` TASK BREAKDOWN sections for full checklists with
+live-verification notes. No real LinkedIn publishing yet (Phase 3+).
+Deployment to Render is in progress — see README.md "Deploying to Render".
 
 Working endpoints: `POST /api/marketing/generate`, `/regenerate`, `/approve`,
 `GET /api/marketing/draft/{id}`. `/publish` does not exist yet.
@@ -76,6 +77,14 @@ uv run pytest -v                     # run tests (offline, no GEMINI_API_KEY nee
   syntactically valid JSON, garbage content. `ContentOutput.hashtags` has a
   `field_validator` that catches overlong/malformed tags as a guardrail, but
   there's no retry-on-failure logic yet.
+- **CORS origins are configurable, not hardcoded** — `CORS_ALLOWED_ORIGINS`
+  in `Settings` (comma-separated, defaults to `http://localhost:3000`).
+  Added when preparing for Render deployment, since the deployed frontend's
+  origin isn't `localhost:3000`. Set the real value as a Render env var
+  rather than editing `main.py`.
+- **In-memory `store.py` doesn't survive Render restarts/redeploys** and
+  won't work correctly if scaled to multiple instances (each has its own
+  dict). Fine for one always-on instance; needs a real DB before scaling.
 
 ## Conventions
 

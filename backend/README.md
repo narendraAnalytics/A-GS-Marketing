@@ -58,7 +58,7 @@ All endpoints are under `/api/marketing`:
 | GET    | `/draft/{draft_id}`   | —                         | Fetch current draft                   |
 
 `/publish` does not exist yet — publishing to LinkedIn is out of scope for
-Phase 1.
+Phase 1. `GET /health` returns `{"status": "ok"}` for uptime/deploy checks.
 
 Example:
 
@@ -76,6 +76,51 @@ uv run pytest -v
 
 All tests run against a `FakeLLMProvider` (see `tests/conftest.py`) — no
 network calls, no `GEMINI_API_KEY` required in CI.
+
+## Deploying to Render
+
+1. Push this repo to GitHub (already done) — Render deploys from git.
+2. Render Dashboard → **New** → **Web Service** → connect the repo.
+3. **Root Directory**: `backend` (this is a monorepo with `frontend/` as a
+   sibling folder — Render must be scoped to `backend/` or it'll try to
+   build both).
+4. **Runtime**: Python 3 (Render reads `.python-version` = `3.12`
+   automatically from the root directory once scoped to `backend/`).
+5. **Build Command**:
+   ```
+   uv sync --frozen
+   ```
+   (Needs `uv` available — Render's Python environment doesn't have it
+   preinstalled by default; if the build fails with `uv: command not
+   found`, prefix with `pip install uv && uv sync --frozen`.)
+6. **Start Command**:
+   ```
+   uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT
+   ```
+   `--host 0.0.0.0` and `$PORT` (Render's dynamically assigned port) are
+   both required — omitting either means Render can't route traffic to the
+   container and every request 502s.
+7. **Environment variables** (Render dashboard → Environment):
+   - `GEMINI_API_KEY` — required, no default (`Settings` will fail to
+     construct without it).
+   - `LANGGRAPH_STRICT_MSGPACK=true` — keep this set in every environment
+     (see phase1.txt task 7 for why).
+   - `CORS_ALLOWED_ORIGINS` — comma-separated list of origins allowed to
+     call this API from a browser. Defaults to `http://localhost:3000` if
+     unset, which is wrong for production — set it to your deployed
+     frontend's real URL once that exists (e.g.
+     `https://ags-marketing.vercel.app`). Multiple origins:
+     `https://a.com,https://b.com`.
+   - `GEMINI_MODEL` — optional, defaults to `gemini-flash-latest`.
+8. Deploy. Verify with `curl https://<your-service>.onrender.com/health`
+   (expect `{"status":"ok"}`), then `/docs` for Swagger UI.
+
+**Known limitation carried over from local dev**: the draft store
+(`app/store.py`) is an in-memory Python dict — it does not persist across
+Render restarts/redeploys or scale to multiple instances. Fine for this
+POC's single always-on free/starter instance; revisit with a real database
+before scaling beyond one instance (see phase1.txt "WHY NOT FULL LANGGRAPH
+interrupt() / POSTGRES CHECKPOINTER YET").
 
 ## Project layout
 
